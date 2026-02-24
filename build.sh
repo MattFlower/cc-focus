@@ -20,4 +20,4 @@ chmod +x cc-focus-hook.sh
 echo "Build complete: cc-focus.app"
 echo ""
 echo "To run:  open cc-focus.app"
-echo "To test: echo '{\"event_type\":\"session_start\",\"session_id\":\"test1\",\"cwd\":\"/tmp/test\"}' | nc -U /tmp/cc-focus-501.sock"
+echo "To test: echo '{\"event_type\":\"session_start\",\"session_id\":\"test1\",\"cwd\":\"/tmp/test\"}' | nc -U /tmp/cc-focus-\$(id -u).sock"

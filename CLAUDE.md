@@ -7,7 +7,7 @@ macOS menu bar status indicator for Claude Code sessions. Single-file Swift/AppK
 ```
 Claude Code hooks (JSON on stdin)
   → cc-focus-hook.sh <event_type>     # injects event_type, sends to socket
-    → nc -U /tmp/cc-focus-501.sock
+    → nc -U /tmp/cc-focus-$(id -u).sock
       → cc-focus.swift                # NSStatusItem menu bar app
 ```
 
@@ -17,10 +17,12 @@ All logic is in `cc-focus.swift` (~350 lines). No external dependencies, no pack
 
 - `cc-focus.swift` - The entire app: socket listener, state machine, menu bar UI
 - `cc-focus-hook.sh` - Shell hook that reads Claude Code JSON from stdin, injects event_type via python3, sends to Unix socket
+- `cc-focus-cli` - CLI wrapper: `cc-focus-cli setup` / `cc-focus-cli teardown` for hook management
 - `Info.plist` - App bundle config (LSUIElement=true for no dock icon)
 - `build.sh` - Compiles Swift and creates .app bundle
 - `install.sh` - Builds, installs to ~/Applications, sets up hooks and launchd agent
 - `install-hooks.sh` - Merges hook entries into ~/.claude/settings.json (preserves existing hooks)
+- `uninstall-hooks.sh` - Removes cc-focus hooks from ~/.claude/settings.json
 - `uninstall.sh` - Removes app, launch agent, socket, and hooks from settings
 
 ## Build & Test
@@ -33,9 +35,9 @@ bash uninstall.sh                # full removal
 
 Manual test events:
 ```bash
-echo '{"event_type":"session_start","session_id":"test1","cwd":"/tmp"}' | nc -U /tmp/cc-focus-501.sock
-echo '{"event_type":"stop","session_id":"test1","cwd":"/tmp"}' | nc -U /tmp/cc-focus-501.sock
-echo '{"event_type":"session_end","session_id":"test1"}' | nc -U /tmp/cc-focus-501.sock
+echo '{"event_type":"session_start","session_id":"test1","cwd":"/tmp"}' | nc -U /tmp/cc-focus-$(id -u).sock
+echo '{"event_type":"stop","session_id":"test1","cwd":"/tmp"}' | nc -U /tmp/cc-focus-$(id -u).sock
+echo '{"event_type":"session_end","session_id":"test1"}' | nc -U /tmp/cc-focus-$(id -u).sock
 ```
 
 ## Key Design Decisions

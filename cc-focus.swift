@@ -49,7 +49,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cleanupTimer: Timer?
     private var receiveBuffers: [Int32: Data] = [:]
 
-    private let socketPath = "/tmp/cc-focus-501.sock"
+    private let socketPath = "/tmp/cc-focus-\(getuid()).sock"
+    private let pidPath = "/tmp/cc-focus-\(getuid()).pid"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         startSocketListener()
@@ -61,6 +62,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         cleanupSocket()
+        unlink(pidPath)
     }
 
     // MARK: - Socket Listener
@@ -391,12 +393,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
 // MARK: - Main Entry Point
 
-// Prevent multiple instances
-let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.mflower.cc-focus")
-if runningApps.count > 1 {
-    NSLog("cc-focus: Another instance is already running, exiting.")
+// Prevent multiple instances via PID file
+let pidPath = "/tmp/cc-focus-\(getuid()).pid"
+if let pidStr = try? String(contentsOfFile: pidPath, encoding: .utf8),
+   let pid = Int32(pidStr.trimmingCharacters(in: .whitespacesAndNewlines)),
+   kill(pid, 0) == 0 {
+    NSLog("cc-focus: Another instance already running (PID %d)", pid)
     exit(0)
 }
+try? "\(ProcessInfo.processInfo.processIdentifier)".write(
+    toFile: pidPath, atomically: true, encoding: .utf8)
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)

@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="cc-focus"
 APP_BUNDLE="$SCRIPT_DIR/$APP_NAME.app"
 INSTALL_DIR="$HOME/Applications"
-SOCKET="/tmp/cc-focus-501.sock"
+SOCKET="/tmp/cc-focus-$(id -u).sock"
 
 echo "=== cc-focus installer ==="
 echo ""

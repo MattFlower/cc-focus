@@ -2,7 +2,7 @@
 set -e
 
 SETTINGS="$HOME/.claude/settings.json"
-HOOK_SCRIPT="$(cd "$(dirname "$0")" && pwd)/cc-focus-hook.sh"
+HOOK_SCRIPT="${1:-$(cd "$(dirname "$0")" && pwd)/cc-focus-hook.sh}"
 
 if [ ! -f "$SETTINGS" ]; then
     echo "Error: $SETTINGS not found"

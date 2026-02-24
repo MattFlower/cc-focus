@@ -1,0 +1,45 @@
+#!/bin/bash
+# cc-focus-cli - CLI wrapper for cc-focus hook setup/teardown
+# Usage: cc-focus-cli setup | teardown
+
+set -e
+
+# Resolve share directory: Homebrew install or repo-relative
+if command -v brew >/dev/null 2>&1; then
+    PREFIX="$(brew --prefix 2>/dev/null)"
+    SHARE_DIR="$PREFIX/share/cc-focus"
+fi
+
+# Fall back to same directory as this script
+if [ ! -d "$SHARE_DIR" ] 2>/dev/null; then
+    SHARE_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
+
+HOOK_SCRIPT="$SHARE_DIR/cc-focus-hook.sh"
+INSTALL_HOOKS="$SHARE_DIR/install-hooks.sh"
+UNINSTALL_HOOKS="$SHARE_DIR/uninstall-hooks.sh"
+
+case "${1:-}" in
+    setup)
+        if [ ! -f "$INSTALL_HOOKS" ]; then
+            echo "Error: install-hooks.sh not found at $INSTALL_HOOKS"
+            exit 1
+        fi
+        bash "$INSTALL_HOOKS" "$HOOK_SCRIPT"
+        ;;
+    teardown)
+        if [ ! -f "$UNINSTALL_HOOKS" ]; then
+            echo "Error: uninstall-hooks.sh not found at $UNINSTALL_HOOKS"
+            exit 1
+        fi
+        bash "$UNINSTALL_HOOKS" "$HOOK_SCRIPT"
+        ;;
+    *)
+        echo "Usage: cc-focus-cli <command>"
+        echo ""
+        echo "Commands:"
+        echo "  setup      Register Claude Code hooks for cc-focus"
+        echo "  teardown   Remove Claude Code hooks for cc-focus"
+        exit 1
+        ;;
+esac

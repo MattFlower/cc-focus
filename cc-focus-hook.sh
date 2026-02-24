@@ -3,7 +3,7 @@
 # Usage: cc-focus-hook.sh <event_type>
 # Receives hook JSON on stdin, injects event_type, sends to Unix socket.
 
-SOCKET="/tmp/cc-focus-501.sock"
+SOCKET="/tmp/cc-focus-$(id -u).sock"
 EVENT_TYPE="${1:-unknown}"
 
 # Debug log (remove once verified working)

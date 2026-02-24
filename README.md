@@ -19,7 +19,23 @@ There is not an icon by default - it only appears once you have a claude session
 - Xcode Command Line Tools (`xcode-select --install`)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 
-## Install
+## Install with Homebrew (recommended)
+
+```bash
+brew install MattFlower/recipes/cc-focus
+cc-focus-cli setup                # register Claude Code hooks (one-time)
+brew services start cc-focus      # start + auto-launch at login
+```
+
+### Uninstall (Homebrew)
+
+```bash
+brew services stop cc-focus
+cc-focus-cli teardown
+brew uninstall cc-focus
+```
+
+## Install from source
 
 ```bash
 git clone https://github.com/mflower/cc-focus.git
@@ -35,7 +51,7 @@ This will:
 4. Set up a launch agent so it starts at login
 5. Launch the app
 
-## Uninstall
+### Uninstall (source)
 
 ```bash
 bash uninstall.sh
@@ -48,10 +64,10 @@ Removes the app, launch agent, and hooks from Claude settings.
 Claude Code [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) send session events (start, end, prompt, tool use) to a shell script (`cc-focus-hook.sh`), which forwards them over a Unix socket to the menu bar app (`cc-focus.swift`).
 
 ```
-Claude Code hooks → cc-focus-hook.sh → /tmp/cc-focus-501.sock → cc-focus.app (menu bar)
+Claude Code hooks → cc-focus-hook.sh → /tmp/cc-focus-<uid>.sock → cc-focus (menu bar)
 ```
 
-Sessions with no activity for 3 minutes are automatically cleaned up (handles crashed instances).
+Sessions whose Claude Code process has exited are automatically cleaned up every 30 seconds.
 
 ## Manual testing
 
@@ -59,13 +75,13 @@ You can send fake events to see the indicator in action:
 
 ```bash
 # Green dot (session working)
-echo '{"event_type":"session_start","session_id":"test1","cwd":"/tmp/test"}' | nc -U /tmp/cc-focus-501.sock
+echo '{"event_type":"session_start","session_id":"test1","cwd":"/tmp/test"}' | nc -U /tmp/cc-focus-$(id -u).sock
 
 # Red dot (needs input)
-echo '{"event_type":"idle_prompt","session_id":"test1","cwd":"/tmp/test"}' | nc -U /tmp/cc-focus-501.sock
+echo '{"event_type":"idle_prompt","session_id":"test1","cwd":"/tmp/test"}' | nc -U /tmp/cc-focus-$(id -u).sock
 
 # Remove session
-echo '{"event_type":"session_end","session_id":"test1"}' | nc -U /tmp/cc-focus-501.sock
+echo '{"event_type":"session_end","session_id":"test1"}' | nc -U /tmp/cc-focus-$(id -u).sock
 ```
 
 ## License
