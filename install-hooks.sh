@@ -38,6 +38,7 @@ hook_defs = [
     ('SessionEnd', None, 'session_end'),
     ('UserPromptSubmit', None, 'user_prompt'),
     ('PreToolUse', None, 'pre_tool_use'),
+    ('Stop', None, 'stop'),
     ('Notification', 'idle_prompt', 'idle_prompt'),
     ('Notification', 'permission_prompt', 'permission_prompt'),
 ]
@@ -84,5 +85,6 @@ echo "  SessionStart    -> cc-focus-hook.sh session_start"
 echo "  SessionEnd      -> cc-focus-hook.sh session_end"
 echo "  UserPromptSubmit -> cc-focus-hook.sh user_prompt"
 echo "  PreToolUse      -> cc-focus-hook.sh pre_tool_use"
+echo "  Stop            -> cc-focus-hook.sh stop"
 echo "  Notification (idle_prompt)       -> cc-focus-hook.sh idle_prompt"
 echo "  Notification (permission_prompt) -> cc-focus-hook.sh permission_prompt"

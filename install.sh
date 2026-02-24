@@ -28,6 +28,9 @@ mkdir -p "$INSTALL_DIR"
 rm -rf "$INSTALL_DIR/$APP_NAME.app"
 cp -R "$APP_BUNDLE" "$INSTALL_DIR/$APP_NAME.app"
 
+# Clean up local build artifacts to avoid launching the wrong copy
+rm -rf "$APP_BUNDLE" "$SCRIPT_DIR/$APP_NAME"
+
 # 4. Install hooks
 echo ""
 bash "$SCRIPT_DIR/install-hooks.sh"

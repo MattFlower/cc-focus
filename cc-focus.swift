@@ -19,6 +19,20 @@ struct HookEvent: Codable {
     let event_type: String
     let session_id: String?
     let cwd: String?
+    let transcript_path: String?
+
+    /// Extract session ID, falling back to parsing it from transcript_path
+    var resolvedSessionId: String? {
+        if let sid = session_id, !sid.isEmpty { return sid }
+        // transcript_path looks like: .../<session-uuid>.jsonl
+        if let path = transcript_path {
+            let filename = (path as NSString).lastPathComponent
+            if filename.hasSuffix(".jsonl") {
+                return String(filename.dropLast(6)) // remove .jsonl
+            }
+        }
+        return nil
+    }
 }
 
 // MARK: - App Delegate
@@ -193,7 +207,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleEvent(_ event: HookEvent) {
         let eventType = event.event_type
-        guard let sessionId = event.session_id, !sessionId.isEmpty else { return }
+        guard let sessionId = event.resolvedSessionId else { return }
+
+        NSLog("cc-focus: event=%@ session=%@ cwd=%@", eventType, sessionId, event.cwd ?? "(nil)")
 
         if eventType == "session_end" {
             sessions.removeValue(forKey: sessionId)
@@ -205,7 +221,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         switch eventType {
         case "session_start", "user_prompt", "pre_tool_use":
             status = .working
-        case "idle_prompt", "permission_prompt":
+        case "stop", "idle_prompt", "permission_prompt":
             status = .needsInput
         default:
             status = .working
@@ -321,6 +337,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 // MARK: - Main Entry Point
+
+// Prevent multiple instances
+let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: "com.mflower.cc-focus")
+if runningApps.count > 1 {
+    NSLog("cc-focus: Another instance is already running, exiting.")
+    exit(0)
+}
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
