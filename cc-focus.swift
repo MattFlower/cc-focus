@@ -20,6 +20,7 @@ struct HookEvent: Codable {
     let session_id: String?
     let cwd: String?
     let transcript_path: String?
+    let source: String?
 
     /// Extract session ID, falling back to parsing it from transcript_path
     var resolvedSessionId: String? {
@@ -215,6 +216,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             sessions.removeValue(forKey: sessionId)
             updateStatusItem()
             return
+        }
+
+        // When a session is resumed, Claude fires two session_starts:
+        // one "startup" (new wrapper) then one "resume" (the real session).
+        // The "startup" session never gets a session_end, so when we see
+        // a "resume", remove any other session with the same cwd that
+        // started in the last few seconds (the orphaned wrapper).
+        if eventType == "session_start" && event.source == "resume" {
+            let now = Date()
+            let orphanKeys = sessions.filter { (key, sess) in
+                key != sessionId &&
+                sess.cwd == (event.cwd ?? "") &&
+                now.timeIntervalSince(sess.lastEvent) < 5
+            }.map { $0.key }
+            for key in orphanKeys {
+                sessions.removeValue(forKey: key)
+            }
         }
 
         let status: SessionStatus
