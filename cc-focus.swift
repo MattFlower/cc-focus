@@ -14,6 +14,7 @@ struct ClaudeSession {
     var status: SessionStatus
     var lastEvent: Date
     var needsInputSince: Date?
+    var pid: Int?
 }
 
 struct HookEvent: Codable {
@@ -22,6 +23,7 @@ struct HookEvent: Codable {
     let cwd: String?
     let transcript_path: String?
     let source: String?
+    let pid: Int?
 
     /// Extract session ID, falling back to parsing it from transcript_path
     var resolvedSessionId: String? {
@@ -257,6 +259,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let cwd = event.cwd, !cwd.isEmpty {
                 session.cwd = cwd
             }
+            if let pid = event.pid {
+                session.pid = pid
+            }
             sessions[sessionId] = session
         } else {
             sessions[sessionId] = ClaudeSession(
@@ -264,7 +269,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 cwd: event.cwd ?? "unknown",
                 status: status,
                 lastEvent: Date(),
-                needsInputSince: status == .needsInput ? Date() : nil
+                needsInputSince: status == .needsInput ? Date() : nil,
+                pid: event.pid
             )
         }
 
@@ -274,12 +280,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Cleanup
 
     private func cleanupStaleSessions() {
-        let cutoff = Date().addingTimeInterval(-180) // 3 minutes
-        let staleKeys = sessions.filter { $0.value.lastEvent < cutoff }.map { $0.key }
-        for key in staleKeys {
+        // Remove sessions whose Claude Code process is no longer running.
+        let deadKeys = sessions.filter { (_, sess) in
+            guard let pid = sess.pid else { return false }
+            return kill(Int32(pid), 0) != 0 // signal 0 = check if process exists
+        }.map { $0.key }
+        for key in deadKeys {
             sessions.removeValue(forKey: key)
         }
-        if !staleKeys.isEmpty {
+        if !deadKeys.isEmpty {
             updateStatusItem()
         }
     }

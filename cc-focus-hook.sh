@@ -20,8 +20,9 @@ try:
 except:
     data = {}
 data['event_type'] = sys.argv[1]
+data['pid'] = int(sys.argv[2])
 print(json.dumps(data))
-" "$EVENT_TYPE" 2>/dev/null)
+" "$EVENT_TYPE" "$PPID" 2>/dev/null)
 
 echo "$(date +%H:%M:%S) $EVENT_TYPE -> $ENRICHED" >> "$LOG"
 echo "$ENRICHED" | nc -U "$SOCKET" 2>/dev/null
