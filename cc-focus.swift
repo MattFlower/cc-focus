@@ -263,7 +263,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
-            let circleDiameter: CGFloat = 10
+            let circleDiameter: CGFloat = 16
             let circleRect = NSRect(
                 x: (rect.width - circleDiameter) / 2,
                 y: (rect.height - circleDiameter) / 2,
