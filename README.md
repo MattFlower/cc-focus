@@ -9,6 +9,10 @@ When you're running multiple Claude Code instances, cc-focus gives you a passive
 - **No dot**: no sessions running
 - **Click**: dropdown showing each session's status and working directory
 
+This app is incredibly minimalistic. There's not even an icon in Applications, it gets set up automatically in launchctl when it gets installed.
+
+There is not an icon by default - it only appears once you have a claude session open. If you close all the Claude sessions, the icon disappears.
+
 ## Requirements
 
 - macOS
@@ -24,6 +28,7 @@ bash install.sh
 ```
 
 This will:
+
 1. Build the app from source
 2. Install to `~/Applications/cc-focus.app`
 3. Add hooks to `~/.claude/settings.json` (existing hooks are preserved)

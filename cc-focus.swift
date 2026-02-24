@@ -13,6 +13,7 @@ struct ClaudeSession {
     var cwd: String
     var status: SessionStatus
     var lastEvent: Date
+    var needsInputSince: Date?
 }
 
 struct HookEvent: Codable {
@@ -38,7 +39,7 @@ struct HookEvent: Codable {
 
 // MARK: - App Delegate
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var sessions: [String: ClaudeSession] = [:]
     private var serverSocket: Int32 = -1
@@ -246,6 +247,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if var session = sessions[sessionId] {
+            if status == .needsInput && session.status != .needsInput {
+                session.needsInputSince = Date()
+            } else if status == .working {
+                session.needsInputSince = nil
+            }
             session.status = status
             session.lastEvent = Date()
             if let cwd = event.cwd, !cwd.isEmpty {
@@ -257,7 +263,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 sessionId: sessionId,
                 cwd: event.cwd ?? "unknown",
                 status: status,
-                lastEvent: Date()
+                lastEvent: Date(),
+                needsInputSince: status == .needsInput ? Date() : nil
             )
         }
 
@@ -318,7 +325,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func rebuildMenu() {
         let menu = NSMenu()
+        menu.delegate = self
+        populateMenu(menu)
+        statusItem?.menu = menu
+    }
 
+    func menuWillOpen(_ menu: NSMenu) {
+        menu.removeAllItems()
+        populateMenu(menu)
+    }
+
+    private func populateMenu(_ menu: NSMenu) {
         // Sort: red (needsInput) first, then green (working)
         let sorted = sessions.values.sorted { a, b in
             if a.status == .needsInput && b.status != .needsInput { return true }
@@ -329,14 +346,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for session in sorted {
             let dot = session.status == .needsInput ? "\u{1F534}" : "\u{1F7E2}"
             let shortCwd = shortenPath(session.cwd)
-            let item = NSMenuItem(title: "\(dot) \(shortCwd)", action: nil, keyEquivalent: "")
+            var title = "\(dot) \(shortCwd)"
+            if session.status == .needsInput, let since = session.needsInputSince {
+                let elapsed = Int(Date().timeIntervalSince(since))
+                let minutes = elapsed / 60
+                let seconds = elapsed % 60
+                if minutes > 0 {
+                    title += " — Idle for \(minutes)m \(seconds)s"
+                } else {
+                    title += " — Idle for \(seconds)s"
+                }
+            }
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             menu.addItem(item)
         }
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-
-        statusItem?.menu = menu
     }
 
     private func shortenPath(_ path: String) -> String {
