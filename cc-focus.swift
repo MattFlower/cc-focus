@@ -426,15 +426,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Terminal Switching
 
+    private let debugLogMaxBytes: UInt64 = 512 * 1024  // 512 KB
+
     private func debugLog(_ msg: String) {
         let entry = "\(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)) \(msg)\n"
         let path = "/tmp/cc-focus-debug.log"
+        let fm = FileManager.default
+
+        // Rotate if the log exceeds the size limit
+        if let attrs = try? fm.attributesOfItem(atPath: path),
+           let size = attrs[.size] as? UInt64,
+           size > debugLogMaxBytes {
+            let tmpPath = path + ".tmp"
+            // Keep the tail end of the log so recent entries are preserved
+            if let data = fm.contents(atPath: path) {
+                let keepFrom = Int(size - debugLogMaxBytes / 2)
+                let trimmed = data.subdata(in: keepFrom..<data.count)
+                fm.createFile(atPath: tmpPath, contents: trimmed)
+                try? fm.removeItem(atPath: path)
+                try? fm.moveItem(atPath: tmpPath, toPath: path)
+            }
+        }
+
         if let fh = FileHandle(forWritingAtPath: path) {
             fh.seekToEndOfFile()
             fh.write(entry.data(using: .utf8)!)
             fh.closeFile()
         } else {
-            FileManager.default.createFile(atPath: path, contents: entry.data(using: .utf8))
+            fm.createFile(atPath: path, contents: entry.data(using: .utf8))
         }
     }
 
