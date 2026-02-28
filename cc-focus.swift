@@ -370,9 +370,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         versionItem.isEnabled = false
         menu.addItem(versionItem)
 
-        let copyItem = NSMenuItem(title: "Copy to clipboard", action: #selector(copyVersionToClipboard), keyEquivalent: "c")
-        menu.addItem(copyItem)
-
         if hasLegacyLaunchAgent {
             menu.addItem(.separator())
             let warnItem = NSMenuItem(title: "\u{26A0}\u{FE0F} Legacy launch agent found", action: #selector(showLegacyCleanupInfo), keyEquivalent: "")
@@ -409,11 +406,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-    }
-
-    @objc func copyVersionToClipboard(_ sender: Any?) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("cc-focus \(ccFocusVersion)", forType: .string)
     }
 
     @objc func showLegacyCleanupInfo(_ sender: Any?) {
