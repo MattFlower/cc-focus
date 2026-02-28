@@ -43,6 +43,25 @@ struct HookEvent: Codable {
     }
 }
 
+// MARK: - Kitty JSON Model
+
+struct KittyOSWindow: Codable {
+    let id: Int
+    let tabs: [KittyTab]
+}
+struct KittyTab: Codable {
+    let id: Int
+    let windows: [KittyWindow]
+}
+struct KittyWindow: Codable {
+    let id: Int
+    let pid: Int
+    let foreground_processes: [KittyForegroundProcess]?
+}
+struct KittyForegroundProcess: Codable {
+    let pid: Int
+}
+
 // MARK: - App Delegate
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -57,6 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let pidPath = "/tmp/cc-focus-\(getuid()).pid"
 
     private var hasLegacyLaunchAgent = false
+    private var kittyMissingRemoteControl = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         checkForLegacyLaunchAgent()
@@ -349,6 +369,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem?.button?.image = image
         statusItem?.button?.toolTip = anyNeedsInput ? "Claude: needs input" : "Claude: working"
 
+        // Check if Kitty is running but remote control isn't configured
+        let kittyRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "net.kovidgoyal.kitty").isEmpty
+        kittyMissingRemoteControl = kittyRunning && findKittySockets().isEmpty
+
         rebuildMenu()
     }
 
@@ -373,6 +397,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if hasLegacyLaunchAgent {
             menu.addItem(.separator())
             let warnItem = NSMenuItem(title: "\u{26A0}\u{FE0F} Legacy launch agent found", action: #selector(showLegacyCleanupInfo), keyEquivalent: "")
+            menu.addItem(warnItem)
+        }
+
+        if kittyMissingRemoteControl {
+            menu.addItem(.separator())
+            let warnItem = NSMenuItem(title: "\u{26A0}\u{FE0F} Kitty remote control not enabled", action: #selector(showKittyRemoteControlInfo), keyEquivalent: "")
             menu.addItem(warnItem)
         }
 
@@ -424,6 +454,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.runModal()
     }
 
+    @objc func showKittyRemoteControlInfo(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Kitty remote control not enabled"
+        alert.informativeText = """
+            Kitty is running but remote control is not configured. \
+            Session switching requires these lines in your kitty.conf:
+
+            allow_remote_control socket-only
+            listen_on unix:/tmp/kitty-{kitty_pid}
+
+            Restart Kitty after making changes.
+            """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     // MARK: - Terminal Switching
 
     private func debugLog(_ msg: String) {
@@ -457,6 +504,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func activateTerminalForPID(_ pid: Int) {
+        // Try Kitty first (PID-based, no TTY needed)
+        let kittyRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "net.kovidgoyal.kitty").isEmpty
+        if kittyRunning {
+            debugLog("trying Kitty for pid \(pid)")
+            if activateKittyWindow(pid: pid) { return }
+        }
+
         guard let tty = getTTYForPID(pid) else {
             debugLog("no TTY for pid \(pid), using fallback")
             activateTerminalAppForPID(pid)
@@ -559,6 +613,132 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return result.booleanValue
     }
 
+    // MARK: - Kitty Support
+
+    private func findKittenBinary() -> String? {
+        let candidates = [
+            "/opt/homebrew/bin/kitten",
+            "/usr/local/bin/kitten",
+            "/Applications/kitty.app/Contents/MacOS/kitten"
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    private func findKittySockets() -> [String] {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(atPath: "/tmp") else { return [] }
+        var sockets: [String] = []
+        for entry in entries where entry.hasPrefix("kitty-") {
+            let path = "/tmp/\(entry)"
+            var statBuf = stat()
+            guard stat(path, &statBuf) == 0 else { continue }
+            if (statBuf.st_mode & S_IFMT) == S_IFSOCK {
+                sockets.append(path)
+            }
+        }
+        return sockets
+    }
+
+    /// Build set of all ancestor PIDs (walking up to init). Uses sysctl, no subprocesses.
+    private func ancestorPIDs(of pid: Int) -> Set<Int> {
+        var ancestors = Set<Int>()
+        var current = pid
+        for _ in 0..<20 {
+            guard let parent = getParentPID(current) else { break }
+            ancestors.insert(parent)
+            current = parent
+        }
+        return ancestors
+    }
+
+    private func activateKittyWindow(pid: Int) -> Bool {
+        guard let kitten = findKittenBinary() else {
+            debugLog("kitty: kitten binary not found")
+            return false
+        }
+        let sockets = findKittySockets()
+        guard !sockets.isEmpty else {
+            debugLog("kitty: no sockets found")
+            return false
+        }
+
+        // Pre-compute ancestor chain once (all sysctl, no subprocesses)
+        let ancestors = ancestorPIDs(of: pid)
+
+        for sock in sockets {
+            debugLog("kitty: trying socket \(sock)")
+
+            // Run kitten @ ls
+            let pipe = Pipe()
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: kitten)
+            process.arguments = ["@", "--to", "unix:\(sock)", "ls"]
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            do {
+                try process.run()
+                process.waitUntilExit()
+            } catch {
+                debugLog("kitty: failed to run kitten ls: \(error)")
+                continue
+            }
+            guard process.terminationStatus == 0 else {
+                debugLog("kitty: kitten ls exited with \(process.terminationStatus)")
+                continue
+            }
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let osWindows = try? JSONDecoder().decode([KittyOSWindow].self, from: data) else {
+                debugLog("kitty: failed to decode ls output")
+                continue
+            }
+
+            // Search for a window matching our target PID
+            for osWin in osWindows {
+                for tab in osWin.tabs {
+                    for win in tab.windows {
+                        var matched = false
+                        // Check foreground processes first
+                        if let fgProcs = win.foreground_processes {
+                            for fg in fgProcs {
+                                if fg.pid == pid || ancestors.contains(fg.pid) {
+                                    matched = true
+                                    break
+                                }
+                            }
+                        }
+                        // Fall back to window pid
+                        if !matched {
+                            if win.pid == pid || ancestors.contains(win.pid) {
+                                matched = true
+                            }
+                        }
+
+                        if matched {
+                            debugLog("kitty: matched window id=\(win.id) in socket \(sock)")
+                            // Focus the window
+                            let focusProc = Process()
+                            focusProc.executableURL = URL(fileURLWithPath: kitten)
+                            focusProc.arguments = ["@", "--to", "unix:\(sock)", "focus-window", "--match", "id:\(win.id)"]
+                            focusProc.standardOutput = FileHandle.nullDevice
+                            focusProc.standardError = FileHandle.nullDevice
+                            try? focusProc.run()
+                            focusProc.waitUntilExit()
+
+                            // Bring Kitty app to front
+                            if let kittyApp = NSRunningApplication.runningApplications(withBundleIdentifier: "net.kovidgoyal.kitty").first {
+                                kittyApp.activate(options: [.activateAllWindows])
+                            }
+                            return true
+                        }
+                    }
+                }
+            }
+        }
+        debugLog("kitty: no matching window found for pid \(pid)")
+        return false
+    }
+
     private func activateTerminalAppForPID(_ pid: Int) {
         let runningApps = NSWorkspace.shared.runningApplications
         var currentPID = pid
@@ -574,21 +754,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func getParentPID(_ pid: Int) -> Int? {
-        let pipe = Pipe()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-o", "ppid=", "-p", "\(pid)"]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch { return nil }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let ppidStr = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              let ppid = Int(ppidStr), ppid > 0, ppid != pid else { return nil }
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, Int32(pid)]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        guard sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0) == 0 else { return nil }
+        let ppid = Int(info.kp_eproc.e_ppid)
+        guard ppid > 0, ppid != pid else { return nil }
         return ppid
     }
 

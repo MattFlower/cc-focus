@@ -69,6 +69,34 @@ Claude Code hooks → cc-focus-hook.sh → /tmp/cc-focus-<uid>.sock → cc-focus
 
 Sessions whose Claude Code process has exited are automatically cleaned up every 30 seconds.
 
+## Terminal support
+
+Clicking a session in the dropdown switches to its terminal tab/window.
+
+- **iTerm2** and **Terminal.app** work automatically via AppleScript.
+- **Kitty** requires enabling remote control. Add these lines to your `kitty.conf`:
+  ```
+  allow_remote_control socket-only
+  listen_on unix:/tmp/kitty-{kitty_pid}
+  ```
+  Restart Kitty after making changes. If remote control is not configured, cc-focus will show a warning in the menu.
+
+## Development testing
+
+If you have the Homebrew version installed, stop it first and run the dev build directly:
+
+```bash
+brew services stop cc-focus
+bash build.sh
+open cc-focus.app
+```
+
+The hooks still work because they write to the same Unix socket regardless of which binary is listening. When done, stop the dev build (Quit from the menu) and restart the brew service:
+
+```bash
+brew services start cc-focus
+```
+
 ## Manual testing
 
 You can send fake events to see the indicator in action:
