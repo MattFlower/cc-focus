@@ -1,6 +1,10 @@
 import AppKit
 import Foundation
 
+// MARK: - Version (injected by build.sh, or default)
+
+let ccFocusVersion = "dev"
+
 // MARK: - Data Model
 
 enum SessionStatus: String {
@@ -347,6 +351,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func populateMenu(_ menu: NSMenu) {
+        // Version header
+        let versionItem = NSMenuItem(title: "cc-focus \(ccFocusVersion)", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
+
+        let copyItem = NSMenuItem(title: "Copy to clipboard", action: #selector(copyVersionToClipboard), keyEquivalent: "c")
+        menu.addItem(copyItem)
+
+        menu.addItem(.separator())
+
         // Sort: red (needsInput) first, then green (working)
         let sorted = sessions.values.sorted { a, b in
             if a.status == .needsInput && b.status != .needsInput { return true }
@@ -368,12 +382,186 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     title += " — Idle for \(seconds)s"
                 }
             }
-            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            let item = NSMenuItem(title: title, action: #selector(switchToSession(_:)), keyEquivalent: "")
+            item.representedObject = session.sessionId
             menu.addItem(item)
         }
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+
+    @objc func copyVersionToClipboard(_ sender: Any?) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("cc-focus \(ccFocusVersion)", forType: .string)
+    }
+
+    // MARK: - Terminal Switching
+
+    private func debugLog(_ msg: String) {
+        let entry = "\(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)) \(msg)\n"
+        let path = "/tmp/cc-focus-debug.log"
+        if let fh = FileHandle(forWritingAtPath: path) {
+            fh.seekToEndOfFile()
+            fh.write(entry.data(using: .utf8)!)
+            fh.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: path, contents: entry.data(using: .utf8))
+        }
+    }
+
+    @objc func switchToSession(_ sender: NSMenuItem) {
+        debugLog("switchToSession called")
+        guard let sessionId = sender.representedObject as? String else {
+            debugLog("no sessionId in representedObject")
+            return
+        }
+        guard let session = sessions[sessionId] else {
+            debugLog("session not found for id=\(sessionId)")
+            return
+        }
+        guard let pid = session.pid else {
+            debugLog("no pid for session \(sessionId)")
+            return
+        }
+        debugLog("switching to session=\(sessionId) pid=\(pid)")
+        activateTerminalForPID(pid)
+    }
+
+    private func activateTerminalForPID(_ pid: Int) {
+        guard let tty = getTTYForPID(pid) else {
+            debugLog("no TTY for pid \(pid), using fallback")
+            activateTerminalAppForPID(pid)
+            return
+        }
+        debugLog("pid \(pid) -> tty \(tty)")
+
+        // Try iTerm2
+        let iterm = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.googlecode.iterm2").isEmpty
+        debugLog("iTerm2 running=\(iterm)")
+        if iterm {
+            if activateITermTab(tty: tty) { return }
+            debugLog("iTerm2 AppleScript did not match")
+        }
+
+        // Try Terminal.app
+        let terminal = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Terminal").isEmpty
+        debugLog("Terminal.app running=\(terminal)")
+        if terminal {
+            if activateTerminalTab(tty: tty) { return }
+            debugLog("Terminal.app AppleScript did not match")
+        }
+
+        // Fallback: activate the terminal app that owns this process
+        debugLog("falling back to process tree walk")
+        activateTerminalAppForPID(pid)
+    }
+
+    private func getTTYForPID(_ pid: Int) -> String? {
+        let pipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-o", "tty=", "-p", "\(pid)"]
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch { return nil }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let ttyShort = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !ttyShort.isEmpty, ttyShort != "??" else { return nil }
+        return "/dev/tty\(ttyShort)"
+    }
+
+    private func activateITermTab(tty: String) -> Bool {
+        let script = """
+        tell application "iTerm2"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    repeat with s in sessions of t
+                        if tty of s is "\(tty)" then
+                            tell t to select
+                            tell w to select
+                            activate
+                            return true
+                        end if
+                    end repeat
+                end repeat
+            end repeat
+        end tell
+        return false
+        """
+        return runAppleScript(script)
+    }
+
+    private func activateTerminalTab(tty: String) -> Bool {
+        let script = """
+        tell application "Terminal"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    if tty of t is "\(tty)" then
+                        set selected tab of w to t
+                        set index of w to 1
+                        activate
+                        return true
+                    end if
+                end repeat
+            end repeat
+        end tell
+        return false
+        """
+        return runAppleScript(script)
+    }
+
+    private func runAppleScript(_ source: String) -> Bool {
+        var error: NSDictionary?
+        guard let script = NSAppleScript(source: source) else {
+            debugLog("failed to create NSAppleScript")
+            return false
+        }
+        let result = script.executeAndReturnError(&error)
+        if let error = error {
+            debugLog("AppleScript error: \(error)")
+            return false
+        }
+        debugLog("AppleScript result: \(result.description)")
+        return result.booleanValue
+    }
+
+    private func activateTerminalAppForPID(_ pid: Int) {
+        let runningApps = NSWorkspace.shared.runningApplications
+        var currentPID = pid
+
+        while currentPID > 1 {
+            if let app = runningApps.first(where: { $0.processIdentifier == Int32(currentPID) }) {
+                app.activate(options: [.activateAllWindows])
+                return
+            }
+            guard let ppid = getParentPID(currentPID) else { break }
+            currentPID = ppid
+        }
+    }
+
+    private func getParentPID(_ pid: Int) -> Int? {
+        let pipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-o", "ppid=", "-p", "\(pid)"]
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch { return nil }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let ppidStr = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              let ppid = Int(ppidStr), ppid > 0, ppid != pid else { return nil }
+        return ppid
     }
 
     private func shortenPath(_ path: String) -> String {
