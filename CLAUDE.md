@@ -20,17 +20,19 @@ All logic is in `cc-focus.swift` (~350 lines). No external dependencies, no pack
 - `cc-focus-cli` - CLI wrapper: `cc-focus-cli setup` / `cc-focus-cli teardown` for hook management
 - `Info.plist` - App bundle config (LSUIElement=true for no dock icon)
 - `build.sh` - Compiles Swift and creates .app bundle
-- `install.sh` - Builds, installs to ~/Applications, sets up hooks and launchd agent
+- `install.sh` - Builds, cleans up legacy installs, sets up hooks
 - `install-hooks.sh` - Merges hook entries into ~/.claude/settings.json (preserves existing hooks)
 - `uninstall-hooks.sh` - Removes cc-focus hooks from ~/.claude/settings.json
-- `uninstall.sh` - Removes app, launch agent, socket, and hooks from settings
+- `uninstall.sh` - Stops service, cleans up legacy installs, removes socket/hooks
 
 ## Build & Test
 
 ```bash
 bash build.sh                    # compile
-bash install.sh                  # full install (build + hooks + launchd)
+bash install.sh                  # build + hooks (cleans up legacy installs)
 bash uninstall.sh                # full removal
+brew services restart cc-focus   # start/restart via Homebrew
+brew services stop cc-focus      # stop
 ```
 
 Manual test events:

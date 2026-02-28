@@ -11,21 +11,22 @@ PID_FILE="/tmp/cc-focus-$(id -u).pid"
 echo "=== cc-focus uninstaller ==="
 echo ""
 
-# 1. Stop running instance
+# 1. Stop running instance (try brew services first, then pkill)
+brew services stop cc-focus 2>/dev/null || true
 if pgrep -f "$APP_NAME.app" >/dev/null 2>&1; then
     echo "Stopping cc-focus..."
     pkill -f "$APP_NAME.app" 2>/dev/null || true
     sleep 0.5
 fi
 
-# 2. Remove launch agent
+# 2. Remove old manual launch agent (legacy migration cleanup)
 if [ -f "$LAUNCH_PLIST" ]; then
-    echo "Removing launch agent..."
+    echo "Removing old launch agent..."
     launchctl unload "$LAUNCH_PLIST" 2>/dev/null || true
     rm -f "$LAUNCH_PLIST"
 fi
 
-# 3. Remove installed app
+# 3. Remove old ~/Applications copy (legacy migration cleanup)
 if [ -d "$INSTALL_DIR/$APP_NAME.app" ]; then
     echo "Removing $INSTALL_DIR/$APP_NAME.app..."
     rm -rf "$INSTALL_DIR/$APP_NAME.app"

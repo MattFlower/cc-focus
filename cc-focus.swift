@@ -56,12 +56,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let socketPath = "/tmp/cc-focus-\(getuid()).sock"
     private let pidPath = "/tmp/cc-focus-\(getuid()).pid"
 
+    private var hasLegacyLaunchAgent = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        checkForLegacyLaunchAgent()
         startSocketListener()
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.cleanupStaleSessions()
         }
         updateStatusItem()
+    }
+
+    // MARK: - Legacy Migration Check
+
+    private func checkForLegacyLaunchAgent() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let legacyPlist = "\(home)/Library/LaunchAgents/com.mflower.cc-focus.plist"
+        hasLegacyLaunchAgent = FileManager.default.fileExists(atPath: legacyPlist)
+        if hasLegacyLaunchAgent {
+            NSLog("cc-focus: Found legacy launch agent at %@", legacyPlist)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -359,6 +373,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let copyItem = NSMenuItem(title: "Copy to clipboard", action: #selector(copyVersionToClipboard), keyEquivalent: "c")
         menu.addItem(copyItem)
 
+        if hasLegacyLaunchAgent {
+            menu.addItem(.separator())
+            let warnItem = NSMenuItem(title: "\u{26A0}\u{FE0F} Legacy launch agent found", action: #selector(showLegacyCleanupInfo), keyEquivalent: "")
+            menu.addItem(warnItem)
+        }
+
         menu.addItem(.separator())
 
         // Sort: red (needsInput) first, then green (working)
@@ -394,6 +414,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func copyVersionToClipboard(_ sender: Any?) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("cc-focus \(ccFocusVersion)", forType: .string)
+    }
+
+    @objc func showLegacyCleanupInfo(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Legacy cc-focus install detected"
+        alert.informativeText = """
+            A manual launch agent was found that can conflict with \
+            brew services. To clean it up, run:
+
+            launchctl unload ~/Library/LaunchAgents/com.mflower.cc-focus.plist
+            rm ~/Library/LaunchAgents/com.mflower.cc-focus.plist
+            rm -rf ~/Applications/cc-focus.app
+            """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     // MARK: - Terminal Switching
