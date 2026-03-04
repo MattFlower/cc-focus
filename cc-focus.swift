@@ -284,8 +284,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch eventType {
         case "session_start", "user_prompt", "pre_tool_use":
             status = .working
-        case "idle_prompt", "permission_prompt", "permission_request":
+        case "permission_prompt", "permission_request":
             status = .needsInput
+        case "idle_prompt":
+            status = .idle
         case "stop":
             status = .idle
         default:

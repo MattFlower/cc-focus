@@ -56,8 +56,8 @@ echo '{"event_type":"session_end","session_id":"test1"}' | nc -U /tmp/cc-focus-$
 | Event | Status |
 |-------|--------|
 | `session_start`, `user_prompt`, `pre_tool_use` | GREEN (working) |
-| `permission_request`, `idle_prompt`, `permission_prompt` | RED (needs input) |
-| `stop` | GRAY (idle) |
+| `permission_request`, `permission_prompt` | RED (needs input) |
+| `stop`, `idle_prompt` | GRAY (idle) |
 | `session_end` | Remove session |
 
 Rollup priority for menu bar icon: RED > GREEN > GRAY.
