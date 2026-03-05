@@ -27,6 +27,9 @@ cp Info.plist cc-focus.app/Contents/Info.plist
 
 chmod +x cc-focus-hook.sh
 
+# Ad-hoc sign so macOS can track Automation permissions (iTerm2, Terminal.app)
+codesign -s - -f cc-focus.app 2>/dev/null || true
+
 echo "Build complete: cc-focus.app"
 echo ""
 echo "To run:  open cc-focus.app"

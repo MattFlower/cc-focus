@@ -598,7 +598,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let ttyShort = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
               !ttyShort.isEmpty, ttyShort != "??" else { return nil }
-        return "/dev/tty\(ttyShort)"
+        // ps may return "s004" or "ttys004" depending on macOS version
+        let ttyName = ttyShort.hasPrefix("tty") ? ttyShort : "tty\(ttyShort)"
+        return "/dev/\(ttyName)"
     }
 
     private func activateITermTab(tty: String) -> Bool {
@@ -642,18 +644,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func runAppleScript(_ source: String) -> Bool {
-        var error: NSDictionary?
-        guard let script = NSAppleScript(source: source) else {
-            debugLog("failed to create NSAppleScript")
+        // Use osascript subprocess instead of NSAppleScript so that macOS
+        // associates the Automation TCC prompt with /usr/bin/osascript,
+        // which is pre-approved on most systems.
+        let pipe = Pipe()
+        let errPipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", source]
+        process.standardOutput = pipe
+        process.standardError = errPipe
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            debugLog("osascript launch failed: \(error)")
             return false
         }
-        let result = script.executeAndReturnError(&error)
-        if let error = error {
-            debugLog("AppleScript error: \(error)")
+        if process.terminationStatus != 0 {
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let errStr = String(data: errData, encoding: .utf8) ?? ""
+            debugLog("osascript error: \(errStr.trimmingCharacters(in: .whitespacesAndNewlines))")
             return false
         }
-        debugLog("AppleScript result: \(result.description)")
-        return result.booleanValue
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let result = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        debugLog("osascript result: \(result)")
+        return result == "true"
     }
 
     // MARK: - Kitty Support
