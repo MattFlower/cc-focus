@@ -41,6 +41,7 @@ hook_defs = [
     ('Stop', None, 'stop'),
     ('Notification', 'idle_prompt', 'idle_prompt'),
     ('Notification', 'permission_prompt', 'permission_prompt'),
+    ('PermissionRequest', None, 'permission_request'),
 ]
 
 for hook_key, matcher, event_arg in hook_defs:
@@ -88,3 +89,4 @@ echo "  PreToolUse      -> cc-focus-hook.sh pre_tool_use"
 echo "  Stop            -> cc-focus-hook.sh stop"
 echo "  Notification (idle_prompt)       -> cc-focus-hook.sh idle_prompt"
 echo "  Notification (permission_prompt) -> cc-focus-hook.sh permission_prompt"
+echo "  PermissionRequest               -> cc-focus-hook.sh permission_request"

@@ -8,8 +8,9 @@ let ccFocusVersion = "dev"
 // MARK: - Data Model
 
 enum SessionStatus: String {
-    case working
-    case needsInput
+    case working      // actively running (green)
+    case needsInput   // waiting for user decision (red)
+    case idle         // finished turn, not blocked (gray)
 }
 
 struct ClaudeSession {
@@ -18,6 +19,7 @@ struct ClaudeSession {
     var status: SessionStatus
     var lastEvent: Date
     var needsInputSince: Date?
+    var idleSince: Date?
     var pid: Int?
 }
 
@@ -282,8 +284,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch eventType {
         case "session_start", "user_prompt", "pre_tool_use":
             status = .working
-        case "stop", "idle_prompt", "permission_prompt":
+        case "permission_prompt", "permission_request":
             status = .needsInput
+        case "idle_prompt":
+            status = .idle
+        case "stop":
+            status = .idle
         default:
             status = .working
         }
@@ -291,8 +297,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if var session = sessions[sessionId] {
             if status == .needsInput && session.status != .needsInput {
                 session.needsInputSince = Date()
+            } else if status == .idle && session.status != .idle && session.status != .needsInput {
+                session.idleSince = Date()
+                session.needsInputSince = nil
             } else if status == .working {
                 session.needsInputSince = nil
+                session.idleSince = nil
             }
             session.status = status
             session.lastEvent = Date()
@@ -310,6 +320,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 status: status,
                 lastEvent: Date(),
                 needsInputSince: status == .needsInput ? Date() : nil,
+                idleSince: status == .idle ? Date() : nil,
                 pid: event.pid
             )
         }
@@ -349,7 +360,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let anyNeedsInput = sessions.values.contains { $0.status == .needsInput }
-        let color: NSColor = anyNeedsInput ? .systemRed : .systemGreen
+        let anyWorking = sessions.values.contains { $0.status == .working }
+        let color: NSColor
+        if anyNeedsInput {
+            color = .systemRed
+        } else if anyWorking {
+            color = .systemGreen
+        } else {
+            color = .systemGray
+        }
 
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
@@ -367,7 +386,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         image.isTemplate = false
 
         statusItem?.button?.image = image
-        statusItem?.button?.toolTip = anyNeedsInput ? "Claude: needs input" : "Claude: working"
+        let tooltip: String
+        if anyNeedsInput {
+            tooltip = "Claude: needs input"
+        } else if anyWorking {
+            tooltip = "Claude: working"
+        } else {
+            tooltip = "Claude: idle"
+        }
+        statusItem?.button?.toolTip = tooltip
 
         // Check if Kitty is running but remote control isn't configured
         let kittyRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "net.kovidgoyal.kitty").isEmpty
@@ -408,15 +435,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        // Sort: red (needsInput) first, then green (working)
+        // Sort: red (needsInput) first, then green (working), then gray (idle)
+        let statusOrder: [SessionStatus: Int] = [.needsInput: 0, .working: 1, .idle: 2]
         let sorted = sessions.values.sorted { a, b in
-            if a.status == .needsInput && b.status != .needsInput { return true }
-            if a.status != .needsInput && b.status == .needsInput { return false }
+            let ao = statusOrder[a.status] ?? 9
+            let bo = statusOrder[b.status] ?? 9
+            if ao != bo { return ao < bo }
             return a.cwd < b.cwd
         }
 
         for session in sorted {
-            let dot = session.status == .needsInput ? "\u{1F534}" : "\u{1F7E2}"
+            let dot: String
+            switch session.status {
+            case .needsInput: dot = "\u{1F534}" // red
+            case .working:    dot = "\u{1F7E2}" // green
+            case .idle:       dot = "\u{26AA}"  // gray/white
+            }
             let shortCwd = shortenPath(session.cwd)
             var title = "\(dot) \(shortCwd)"
             if session.status == .needsInput, let since = session.needsInputSince {
@@ -424,9 +458,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let minutes = elapsed / 60
                 let seconds = elapsed % 60
                 if minutes > 0 {
-                    title += " — Idle for \(minutes)m \(seconds)s"
+                    title += " — Waiting \(minutes)m \(seconds)s"
                 } else {
-                    title += " — Idle for \(seconds)s"
+                    title += " — Waiting \(seconds)s"
+                }
+            } else if session.status == .idle, let since = session.idleSince {
+                let elapsed = Int(Date().timeIntervalSince(since))
+                let minutes = elapsed / 60
+                let seconds = elapsed % 60
+                if minutes > 0 {
+                    title += " — Idle \(minutes)m \(seconds)s"
+                } else {
+                    title += " — Idle \(seconds)s"
                 }
             }
             let item = NSMenuItem(title: title, action: #selector(switchToSession(_:)), keyEquivalent: "")

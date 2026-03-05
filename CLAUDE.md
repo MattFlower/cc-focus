@@ -44,7 +44,7 @@ echo '{"event_type":"session_end","session_id":"test1"}' | nc -U /tmp/cc-focus-$
 
 ## Key Design Decisions
 
-- **Stop hook for idle detection**: The `idle_prompt` Notification hook does not fire reliably. The `Stop` hook (fires when Claude finishes its turn) is used instead to detect when a session needs input.
+- **Stop hook for idle**: The `Stop` hook (fires when Claude finishes its turn) maps to the `idle` (gray) state. The `PermissionRequest` hook and `idle_prompt`/`permission_prompt` Notification hooks map to `needsInput` (red). `PermissionRequest` fires promptly when the permission dialog appears; the `Notification`/`permission_prompt` hook fires with a delay and serves as a backup.
 - **Notification events lack session_id**: `Notification` hook events (permission_prompt, idle_prompt) don't include `session_id`. The app falls back to extracting it from `transcript_path`.
 - **Resume creates orphan sessions**: When continuing a session, Claude fires two `session_start` events: a "startup" wrapper and a "resume". Only the resumed session gets a `session_end`. The app cleans up the orphaned wrapper when it sees a resume event.
 - **isTemplate = false**: The status item image must not be a template, otherwise macOS recolors the circle to match the menu bar theme.
@@ -56,7 +56,10 @@ echo '{"event_type":"session_end","session_id":"test1"}' | nc -U /tmp/cc-focus-$
 | Event | Status |
 |-------|--------|
 | `session_start`, `user_prompt`, `pre_tool_use` | GREEN (working) |
-| `stop`, `idle_prompt`, `permission_prompt` | RED (needs input) |
+| `permission_request`, `permission_prompt` | RED (needs input) |
+| `stop`, `idle_prompt` | GRAY (idle) |
 | `session_end` | Remove session |
+
+Rollup priority for menu bar icon: RED > GREEN > GRAY.
 
 The hook script injects the Claude Code PID (`$PPID`) into each event. Every 30 seconds, the app checks if each session's PID is still alive (`kill -0`) and removes dead sessions. No time-based cleanup.
