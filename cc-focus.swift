@@ -440,7 +440,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let tmpPath = path + ".tmp"
             // Keep the tail end of the log so recent entries are preserved
             if let data = fm.contents(atPath: path) {
-                let keepFrom = Int(size - debugLogMaxBytes / 2)
+                let keepFrom = max(0, data.count - Int(debugLogMaxBytes))
                 let trimmed = data.subdata(in: keepFrom..<data.count)
                 fm.createFile(atPath: tmpPath, contents: trimmed)
                 try? fm.removeItem(atPath: path)
